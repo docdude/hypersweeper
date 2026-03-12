@@ -172,6 +172,9 @@ class HypersweeperSweeper:
         self.optimizer.checkpoint_path_typing = self.checkpoint_path_typing
         self.optimizer.seeds = seeds
 
+        # Restore state from optimizer for resume support
+        self._restore_state_from_optimizer()
+
         self.warmstart_data: list[tuple[Info, Result]] = []
 
         if warmstart_file:
@@ -190,6 +193,23 @@ class HypersweeperSweeper:
             wandb.init(
                 project=self.wandb_project, entity=wandb_entity, tags=wandb_tags, config=wandb_config, mode=wandb_mode
             )
+
+    def _restore_state_from_optimizer(self):
+        """Restore trials_run and job_idx from optimizer's persisted state.
+
+        If the optimizer exposes ``get_n_completed_trials()`` (e.g. HyperSMACAdapter),
+        use it to initialise counters so that on restart we continue from where
+        we left off instead of re-running the full n_trials budget.
+        """
+        if hasattr(self.optimizer, 'get_n_completed_trials'):
+            n_completed = self.optimizer.get_n_completed_trials()
+            if n_completed > 0:
+                log.info(
+                    f"Resume: found {n_completed} completed trials in optimizer "
+                    f"state. Setting trials_run={n_completed}, job_idx={n_completed}."
+                )
+                self.trials_run = n_completed
+                self.job_idx = n_completed
 
     def run_configs(self, infos):
         """Run a set of overrides.
@@ -218,6 +238,8 @@ class HypersweeperSweeper:
             names = [*list(infos[i].config.keys())]
             if self.budget_arg_name is not None:
                 names += [self.budget_arg_name]
+            if infos[i].instance is not None:
+                names += ["instance"]
             if self.load_tf and self.iteration > 0:
                 names += [self.load_arg_name]
             if self.checkpoint_tf:
@@ -226,6 +248,8 @@ class HypersweeperSweeper:
             values = [*list(infos[i].config.values())]
             if self.budget_arg_name is not None:
                 values += [infos[i].budget]
+            if infos[i].instance is not None:
+                values += [infos[i].instance]
 
             if self.slurm and self.max_budget is not None:
                 names += ["hydra.launcher.timeout_min"]

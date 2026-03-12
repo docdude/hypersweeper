@@ -51,10 +51,20 @@ class HyperSMACAdapter:
             self.current_bracket = 0
             self.brackets_finished = False
 
+    def get_n_completed_trials(self):
+        """Return the number of completed trials from SMAC's persisted runhistory."""
+        return self.smac.runhistory.finished
+
     def ask(self):
         """Ask for the next configuration."""
         smac_info = self.smac.ask()
-        info = Info(config=smac_info.config, budget=smac_info.budget, load_path=None, seed=smac_info.seed)
+        config_dict = dict(smac_info.config)
+        # Inject SMAC config_id so downstream code can track it
+        try:
+            config_dict['_smac_config_id'] = self.smac.runhistory.get_config_id(smac_info.config)
+        except Exception:
+            pass  # config not yet in runhistory (first ask before tell)
+        info = Info(config=smac_info.config, budget=smac_info.budget, load_path=None, seed=smac_info.seed, instance=smac_info.instance)
         terminate = False
         optimizer_termination = False
         if self.hyperband:
@@ -75,7 +85,7 @@ class HyperSMACAdapter:
 
     def tell(self, info, value):
         """Tell the result of the configuration."""
-        smac_info = TrialInfo(info.config, seed=info.seed, budget=info.budget)
+        smac_info = TrialInfo(info.config, instance=info.instance, seed=info.seed, budget=info.budget)
         smac_value = TrialValue(time=value.cost, cost=value.performance)
         self.smac.tell(smac_info, smac_value)
 
@@ -86,12 +96,16 @@ class HyperSMACAdapter:
 def make_smac(configspace, smac_args):
     """Make a SMAC instance for optimization."""
 
-    def dummy_func(arg, seed, budget):  # noqa:ARG001
+    def dummy_func(arg, seed, budget, instance=None):  # noqa:ARG001
         return 0.0
 
     if "output_directory" in smac_args["scenario"]:
         smac_args["scenario"]["output_directory"] = Path(smac_args["scenario"]["output_directory"])
-    scenario = Scenario(configspace, **smac_args.pop("scenario"))
+    # Convert OmegaConf containers to plain Python types for JSON serialization in SMAC
+    scenario_args = OmegaConf.to_container(OmegaConf.create(smac_args.pop("scenario")), resolve=True)
+    if "output_directory" in scenario_args:
+        scenario_args["output_directory"] = Path(scenario_args["output_directory"])
+    scenario = Scenario(configspace, **scenario_args)
     smac_kwargs = {}
 
     if "callbacks" not in smac_args:

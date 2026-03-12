@@ -20,6 +20,7 @@ class Info:
     budget: float
     load_path: str | None = None
     seed: int | None = None
+    instance: str | None = None
 
 
 @dataclass

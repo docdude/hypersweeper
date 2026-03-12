@@ -50,6 +50,7 @@ def mlp_from_cfg(cfg: DictConfig):
     lr = cfg.learning_rate or "constant"
     lr_init = cfg.learning_rate_init or 0.001
     batch_size = cfg.batch_size or 200
+    instance = cfg.get("instance", None)
 
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=ConvergenceWarning)
@@ -65,11 +66,21 @@ def mlp_from_cfg(cfg: DictConfig):
             random_state=cfg.seed,
         )
 
-        # returns the cross validation accuracy
-        cv = StratifiedKFold(n_splits=5, random_state=cfg.seed, shuffle=True)  # to make CV splits consistent
-        score = cross_val_score(mlp, digits.data, digits.target, cv=cv, error_score="raise")
-
-    return 1 - np.mean(score)
+        # If an instance (CV fold index) is provided, evaluate only that fold
+        if instance is not None:
+            instance = int(instance)
+            cv = StratifiedKFold(n_splits=5, random_state=cfg.seed, shuffle=True)
+            for k, (train_idx, test_idx) in enumerate(cv.split(digits.data, digits.target)):
+                if k != instance:
+                    continue
+                mlp.fit(digits.data[train_idx], digits.target[train_idx])
+                score = mlp.score(digits.data[test_idx], digits.target[test_idx])
+                return 1 - score
+        else:
+            # Full cross-validation
+            cv = StratifiedKFold(n_splits=5, random_state=cfg.seed, shuffle=True)
+            score = cross_val_score(mlp, digits.data, digits.target, cv=cv, error_score="raise")
+            return 1 - np.mean(score)
 
 
 if __name__ == "__main__":

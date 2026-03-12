@@ -10,3 +10,4 @@ activation: tanh
 
 seed: 42
 epochs: 10
+instance: null
