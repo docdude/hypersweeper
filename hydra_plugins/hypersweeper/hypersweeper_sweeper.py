@@ -441,6 +441,8 @@ class HypersweeperSweeper:
         self._write_csv(self.incumbents, "incumbent")
 
         if self.wandb_project:
+            import wandb  # noqa: PLC0415
+
             stats = {}
             stats["iteration"] = self.iteration
             stats["total_optimization_time"] = self.incumbents["total_optimization_time"][-1]
@@ -448,7 +450,7 @@ class HypersweeperSweeper:
             best_config = self.incumbents["config"][-1]
             for n in best_config:
                 stats[f"incumbent_{n}"] = best_config.get(n)
-            wandb.log(stats)  # noqa: F821
+            wandb.log(stats)
 
     def run(self, verbose=False):
         """Actual optimization loop.
